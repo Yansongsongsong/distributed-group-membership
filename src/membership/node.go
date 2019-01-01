@@ -16,35 +16,6 @@ type Node struct {
 	listener    *net.UDPConn
 }
 
-// Action 表示 Node 可以采用的action
-type Action int
-
-// eg
-// func (this State) String() string {
-// 	switch this {
-// 	case Running:
-// 			return "Running"
-// 	case Stopped:
-// 			return "Stopped"
-// 	default:
-// 			return "Unknow"
-// 	}
-// }
-
-const (
-	// Join 节点加入
-	Join Action = 1 << iota
-	// Leave 节点退出
-	Leave
-)
-
-// Message 是udp 发送的报文段内容
-type Message struct {
-	from    nodeAddr
-	version timestamp
-	action  Action
-}
-
 func (n *Node) sendMessage(addr string, msg Message) {
 	udpAddr, err := ParseOneEndpoint(addr)
 	if err != nil {

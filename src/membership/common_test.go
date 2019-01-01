@@ -1,6 +1,7 @@
 package membership
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -27,6 +28,18 @@ func TestParseOneEndpoint(t *testing.T) {
 		t.Log("yes: ", addr)
 	} else {
 		t.Fatal("that should not throw error, error is: ", e)
+	}
+
+}
+
+func TestEncodeMessage(t *testing.T) {
+	msg := Message{"192.168.70.30:9981", 2019, Join}
+	bf := EncodeMessage(msg)
+
+	m := DecodeMessage(bf.Bytes())
+
+	if !reflect.DeepEqual(*m, msg) {
+		t.Fatalf("wrong! \nmsg: %#v \nm %#v", msg, m)
 	}
 
 }
