@@ -95,7 +95,7 @@ func (n *Node) faultsDetect() bool {
 		case <-n.FaultsDetectTimer.C:
 			// todo FaultsDetectTimer过期 删除某节点
 			log.Println("aultsDetectTimer过期")
-			n.Broadcast()
+			// n.Broadcast()
 			return true
 		case msg := <-ack:
 			log.Println("收到ack")
@@ -196,8 +196,17 @@ func (n *Node) PingReq() {
 
 // Broadcast 对 Node 维护列表内的所有节点
 // 发送 '移除 某节点' 或者 '添加 某节点' 的 task
-func (n *Node) Broadcast() {
-	log.Println("Broadcast")
+func (n *Node) Broadcast(msg Message) {
+	list := []nodeAddr{}
+	mutex.Lock()
+	for k := range n.maintenance {
+		list = append(list, k)
+	}
+	mutex.Unlock()
+
+	for _, end := range list {
+		n.sendMessage(end, msg)
+	}
 }
 
 // BroadcastReceiver 根据时间戳

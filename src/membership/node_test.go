@@ -45,9 +45,11 @@ func TestUpdateNodeVersion(t *testing.T) {
 	}
 }
 
-func TestFaultsDetect(t *testing.T) {
-	a := make(chan int, 1)
-	node.T = 5
-	node.FaultsDetect()
-	<-a
+func TestBroadcast(t *testing.T) {
+	node.maintenance["192.168.70.30:9982"] = 1
+	node.maintenance["192.168.70.30:9983"] = 1
+	node.maintenance["192.168.70.30:9984"] = 1
+	node.maintenance["192.168.70.30:9985"] = 1
+
+	node.Broadcast(Message{"192.168.70.30:9981", 2019, Join})
 }
