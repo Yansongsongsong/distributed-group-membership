@@ -110,32 +110,32 @@ func (n *Node) updateNodeVersion(msg Message) {
 	mutex.Lock()
 	switch msg.Action {
 	case Join:
-		v, ok := n.maintenance[msg.From]
+		v, ok := n.maintenance[msg.TargetNode]
 		// 1. 不在列表里的可以加入
 		// 2. 在列表里 版本号小的进行更新
 		if !ok || (v < msg.Version && ok) {
-			n.maintenance[msg.From] = msg.Version
+			n.maintenance[msg.TargetNode] = msg.Version
 		}
 	case Leave:
-		v, ok := n.maintenance[msg.From]
+		v, ok := n.maintenance[msg.TargetNode]
 		// 在列表里 且 版本号更大 才删除
 		if ok && v < msg.Version {
-			delete(n.maintenance, msg.From)
+			delete(n.maintenance, msg.TargetNode)
 		}
 	case Ping:
 		// todo
-		v, ok := n.maintenance[msg.From]
+		v, ok := n.maintenance[msg.TargetNode]
 		// 1. 不在列表里的可以加入
 		// 2. 在列表里 版本号小的进行更新
 		if !ok || (v < msg.Version && ok) {
-			n.maintenance[msg.From] = msg.Version
+			n.maintenance[msg.TargetNode] = msg.Version
 		}
 	case PingBack:
-		v, ok := n.maintenance[msg.From]
+		v, ok := n.maintenance[msg.TargetNode]
 		// 1. 不在列表里的可以加入
 		// 2. 在列表里 版本号小的进行更新
 		if !ok || (v < msg.Version && ok) {
-			n.maintenance[msg.From] = msg.Version
+			n.maintenance[msg.TargetNode] = msg.Version
 		}
 	default:
 
@@ -182,7 +182,7 @@ func (n *Node) Ping(to nodeAddr, ack chan Message) {
 	log.Println("Ping")
 	rand.Seed(int64(time.Now().UnixNano()))
 	if rand.Intn(2) == 0 {
-		msg := Message{"add", rand.Intn(100), PingBack}
+		msg := Message{"from", "to", rand.Intn(100), PingBack}
 		ack <- msg
 		log.Println("msg: ", msg)
 	}
@@ -192,6 +192,13 @@ func (n *Node) Ping(to nodeAddr, ack chan Message) {
 // PingReq 发送一个结构体
 func (n *Node) PingReq() {
 
+}
+
+// BroadcastDelete 对 Node 维护列表内的所有节点
+// // 发送 '移除 某节点' 的 task
+func (n *Node) BroadcastDelete(addr nodeAddr) {
+	msg := Message{From: n.addr, TargetNode: addr, Version: GetCurrentTime(), Action: Leave}
+	n.Broadcast(msg)
 }
 
 // Broadcast 对 Node 维护列表内的所有节点

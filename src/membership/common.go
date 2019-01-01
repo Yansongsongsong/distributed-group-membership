@@ -29,6 +29,8 @@ const (
 type Message struct {
 	// From 发送者地址
 	From nodeAddr
+	// 操作对象地址
+	TargetNode nodeAddr
 	// Version 当前发送时间
 	Version timestamp
 	// Action 消息类型
