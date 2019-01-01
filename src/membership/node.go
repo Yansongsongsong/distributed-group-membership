@@ -25,6 +25,8 @@ type Node struct {
 	T int
 	// PingT ping方法等待时间 秒
 	PingT int
+	// PingReqNodesNumber PingReq时 选择节点的数目
+	PingReqNodesNumber int
 }
 
 var (
@@ -93,9 +95,8 @@ func (n *Node) faultsDetect() bool {
 	for {
 		select {
 		case <-n.FaultsDetectTimer.C:
-			// todo FaultsDetectTimer过期 删除某节点
 			log.Println("aultsDetectTimer过期")
-			// n.Broadcast()
+			n.BroadcastDelete(tar)
 			return true
 		case msg := <-ack:
 			log.Println("收到ack")
@@ -143,23 +144,48 @@ func (n *Node) updateNodeVersion(msg Message) {
 	mutex.Unlock()
 }
 
-// todo
 func (n *Node) selectOneNode() nodeAddr {
-	log.Println("selectOneNode")
+	list := []nodeAddr{}
 	mutex.Lock()
-
+	for k := range n.maintenance {
+		list = append(list, k)
+	}
 	mutex.Unlock()
-	return ""
+	rand.Seed(int64(time.Now().UnixNano()))
+	index := rand.Intn(len(list))
+
+	return list[index]
 }
 
 // todo
 func (n *Node) selectServalNodes(except nodeAddr) []nodeAddr {
-	log.Println("selectServalNodesExcept")
-	return []nodeAddr{}
+	list := []nodeAddr{}
+	mutex.Lock()
+	for k := range n.maintenance {
+		if k == except {
+			continue
+		}
+		list = append(list, k)
+	}
+	mutex.Unlock()
+
+	if len(list) <= n.PingReqNodesNumber {
+		return list
+	}
+
+	rand.Seed(int64(time.Now().UnixNano()))
+	indexes := rand.Perm(len(list))[:n.PingReqNodesNumber]
+	res := []nodeAddr{}
+
+	for _, i := range indexes {
+		res = append(res, list[i])
+	}
+	return res
 }
 
 // Ping 发送一个结构体
 // 包含了本机的addr 和 时间戳
+// todo 当本机没有维护的机器时 不ping
 func (n *Node) Ping(to nodeAddr, ack chan Message) {
 	// 定时
 	// if n.PingTimer != nil {

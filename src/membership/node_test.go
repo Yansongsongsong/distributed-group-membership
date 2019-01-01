@@ -43,6 +43,8 @@ func TestUpdateNodeVersion(t *testing.T) {
 	if node.maintenance["node2"] != 1 {
 		t.Fatal(`wrong: node.maintenance["node2"] != 1 `)
 	}
+
+	node.maintenance = make(map[string]int)
 }
 
 func TestBroadcast(t *testing.T) {
@@ -52,4 +54,35 @@ func TestBroadcast(t *testing.T) {
 	node.maintenance["192.168.70.30:9985"] = 1
 
 	node.Broadcast(Message{"192.168.70.30:9981", "tar", 2019, Join})
+	node.BroadcastDelete("192.168.70.30:9985")
 }
+
+func TestSelectOneNode(t *testing.T) {
+	t.Log("Be slected: ", node.selectOneNode())
+	t.Log("Be slected: ", node.selectOneNode())
+	t.Log("Be slected: ", node.selectOneNode())
+	t.Log("Be slected: ", node.selectOneNode())
+	t.Log("Be slected: ", node.selectOneNode())
+	t.Log("Be slected: ", node.selectOneNode())
+}
+
+func TestSelectServalNodes(t *testing.T) {
+	node.maintenance = make(map[string]int)
+	for slect := 0; slect < 6; slect++ {
+		node.PingReqNodesNumber = slect
+		t.Logf("PingReqNodesNumber: %d, %v", slect, node.selectServalNodes("192.168.70.30:9982"))
+	}
+
+	node.maintenance["192.168.70.30:9982"] = 1
+	node.maintenance["192.168.70.30:9983"] = 1
+	node.maintenance["192.168.70.30:9984"] = 1
+	node.maintenance["192.168.70.30:9985"] = 1
+
+	for slect := 0; slect < 6; slect++ {
+		node.PingReqNodesNumber = slect
+		t.Logf("PingReqNodesNumber: %d, %v", slect, node.selectServalNodes("192.168.70.30:9982"))
+	}
+
+}
+
+func Test_(t *testing.T) {}
