@@ -1,5 +1,4 @@
-// Package membership
-// 基于SWIM，算法详解 @see https://zhuanlan.zhihu.com/p/39703992
+// Package membership 基于SWIM，算法详解 @see https://zhuanlan.zhihu.com/p/39703992
 // # 算法，每个 Node 都有两个组件
 // 	- 故障检测 组件
 // 		1. 故障检测周期 T 内，每个 NodeA 从自己保持节点列表里随机选择 1 个节点(NodeB)发送 ping 指令
@@ -26,7 +25,7 @@
 //	- 集群关系变更的广播触发条件
 // 		- 故障检测 & 节点退出 触发
 // 		- 新节点加入触发
-// 思路
+// 思路ie
 // 1. 时间周期可以用任务开始的时间戳来表示，某个人物可以在创建时就定好结束的时间戳
 // 2. ack 可以包含节点名字
 package membership
