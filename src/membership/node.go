@@ -22,9 +22,9 @@ func (n *Node) sendMessage(addr string, msg Message) {
 		log.Printf("When send to '%s', error is: %s", addr, err)
 		return
 	}
+	data := EncodeMessage(msg)
 
-	// todo 消息编码
-	_, err = n.listener.WriteToUDP([]byte("hello"), udpAddr)
+	_, err = n.listener.WriteToUDP(data.Bytes(), udpAddr)
 	if err != nil {
 		log.Printf("When send to '%s', error is: %s", udpAddr.String(), err)
 	}
