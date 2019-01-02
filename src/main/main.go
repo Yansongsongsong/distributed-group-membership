@@ -22,7 +22,7 @@ func main() {
 	fmt.Printf("Local: <%s> \n", listener.LocalAddr().String())
 	data := make([]byte, 1024)
 
-	for index := 0; index < 10; index++ {
+	for index := 0; index < 100; index++ {
 		n, remoteAddr, err := listener.ReadFromUDP(data)
 		if err != nil {
 			fmt.Printf("error during read: %s", err)

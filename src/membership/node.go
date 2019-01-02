@@ -27,6 +27,10 @@ type Node struct {
 	PingT int
 	// PingReqNodesNumber PingReq时 选择节点的数目
 	PingReqNodesNumber int
+	// WaitingPing 是当前node等待pingback的队列 大小为1
+	WaitingPing chan Message
+	// Ack 是收到的Ping 的确认信息
+	ACK chan Message
 }
 
 var (
@@ -74,6 +78,7 @@ func (n *Node) FaultsDetect() {
 				oneDetectHasFinised = false
 				log.Println("重制检测")
 				oneDetectHasFinised = n.faultsDetect()
+				log.Println("执行完faultsDetect() oneDetectHasFinised: ", oneDetectHasFinised)
 			}
 		}
 	}()
@@ -82,24 +87,35 @@ func (n *Node) FaultsDetect() {
 func (n *Node) faultsDetect() bool {
 	// 定时 周期 T
 	if n.FaultsDetectTimer != nil {
+		log.Println("重设FaultsDetectTimer")
 		n.FaultsDetectTimer.Reset(time.Duration(n.T) * time.Second)
 	} else {
+		log.Println("新建FaultsDetectTimer")
 		n.FaultsDetectTimer = time.NewTimer(time.Duration(n.T) * time.Second)
 	}
 
+	if len(n.maintenance) == 0 {
+		// todo 当本机没有维护的机器时 不ping
+		log.Println("当本机没有维护的机器时 不ping")
+		return true
+	}
 	tar := n.selectOneNode()
+	log.Println("selectOneNode: ", tar)
 	ack := make(chan Message, 1)
 	defer close(ack)
-	n.Ping(tar, ack)
+	log.Println("Ping: ", tar)
+
+	go n.Ping(tar, ack)
 
 	for {
 		select {
 		case <-n.FaultsDetectTimer.C:
-			log.Println("aultsDetectTimer过期")
+			log.Println("FaultsDetectTimer过期")
 			n.BroadcastDelete(tar)
 			return true
 		case msg := <-ack:
 			log.Println("收到ack")
+			n.FaultsDetectTimer.Stop()
 			n.updateNodeVersion(msg)
 			return true
 		}
@@ -157,7 +173,6 @@ func (n *Node) selectOneNode() nodeAddr {
 	return list[index]
 }
 
-// todo
 func (n *Node) selectServalNodes(except nodeAddr) []nodeAddr {
 	list := []nodeAddr{}
 	mutex.Lock()
@@ -185,45 +200,56 @@ func (n *Node) selectServalNodes(except nodeAddr) []nodeAddr {
 
 // Ping 发送一个结构体
 // 包含了本机的addr 和 时间戳
-// todo 当本机没有维护的机器时 不ping
 func (n *Node) Ping(to nodeAddr, ack chan Message) {
+	log.Println("Ping开始")
 	// 定时
-	// if n.PingTimer != nil {
-	// 	n.PingTimer.Reset(time.Duration(n.PingT) * time.Second)
-	// } else {
-	// 	n.PingTimer = time.NewTimer(time.Duration(n.PingT) * time.Second)
-	// }
-
-	// msg := Message{
-	// 	From:    n.addr,
-	// 	Version: GetCurrentTime(),
-	// 	Action:  Ping,
-	// }
-	// n.sendMessage(to, msg)
-
-	// select {
-	// case <-n.PingTimer.C:
-
-	// }
-	log.Println("Ping")
-	rand.Seed(int64(time.Now().UnixNano()))
-	if rand.Intn(2) == 0 {
-		msg := Message{"from", "to", rand.Intn(100), PingBack}
-		ack <- msg
-		log.Println("msg: ", msg)
+	if n.PingTimer != nil {
+		log.Println("PingTimer reset")
+		n.PingTimer.Reset(time.Duration(n.PingT) * time.Second)
+	} else {
+		log.Println("PingTimer init")
+		n.PingTimer = time.NewTimer(time.Duration(n.PingT) * time.Second)
 	}
-	return
+
+	msg := Message{
+		From:       n.addr,
+		TargetNode: to,
+		Version:    GetCurrentTime(),
+		Action:     Ping,
+	}
+	log.Println("发ping， msg: ", msg)
+	n.sendMessage(to, msg)
+	n.WaitingPing <- msg
+
+	for {
+		select {
+		case <-n.PingTimer.C:
+			// 过期
+			n.PingReq(msg)
+			log.Println("PingReq msg 结束: ", msg)
+		case msg := <-n.ACK:
+			log.Println("msg := <-n.ACK， msg: ", msg)
+			ack <- msg
+			return
+		}
+	}
+
 }
 
 // PingReq 发送一个结构体
-func (n *Node) PingReq() {
-
+func (n *Node) PingReq(msg Message) {
+	log.Println("PingReq msg: 开始", msg)
+	nodes := n.selectServalNodes(msg.TargetNode)
+	for _, node := range nodes {
+		n.sendMessage(node, msg)
+	}
 }
 
 // BroadcastDelete 对 Node 维护列表内的所有节点
 // // 发送 '移除 某节点' 的 task
 func (n *Node) BroadcastDelete(addr nodeAddr) {
 	msg := Message{From: n.addr, TargetNode: addr, Version: GetCurrentTime(), Action: Leave}
+	log.Println("BroadcastDelete: msg: ", msg)
 	n.Broadcast(msg)
 }
 
