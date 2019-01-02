@@ -62,7 +62,7 @@ func (n *Node) updateNodeVersion(msg Message) {
 		// 2. 在列表里 版本号小的进行更新
 		if !ok || (v < msg.Version && ok) {
 			n.maintenance[msg.TargetNode] = msg.Version
-			n.BroadcastJoin(msg.TargetNode, msg)
+			n.BroadcastJoin(msg.TargetNode)
 		}
 	case Leave:
 		v, ok := n.maintenance[msg.TargetNode]
@@ -368,17 +368,18 @@ func (n *Node) BroadcastDelete(addr nodeAddr) {
 
 // BroadcastJoin 对 Node 维护列表内的所有节点
 // // 发送 '移除 某节点' 的 task
-func (n *Node) BroadcastJoin(addr nodeAddr, m Message) {
+func (n *Node) BroadcastJoin(addr nodeAddr) {
+	v := GetCurrentTime()
 	mutex.Lock()
 	log.Println("before BroadcastJoin: ", n.maintenance)
-	n.maintenance[addr] = m.Version
+	n.maintenance[addr] = v
 	log.Println("after BroadcastJoin: ", n.maintenance)
 	mutex.Unlock()
 	msg := Message{
 		RealFromAddr: n.addr,
 		From:         n.addr,
 		TargetNode:   addr,
-		Version:      m.Version,
+		Version:      v,
 		Action:       Join,
 	}
 	log.Println("BroadcastJoin: msg: ", msg)
@@ -422,16 +423,30 @@ func RunNode(
 	nodeAddress string,
 	faultsDetectTime int,
 	pingExpireTime int,
-	pingNodesMaxNumber int) {
+	pingNodesMaxNumber int,
+	introducerAddr []string) {
 	_, err := ParseOneEndpoint(nodeAddress)
+
 	if err != nil {
 		log.Println(err)
 		os.Exit(1)
 	}
 
+	for _, in := range introducerAddr {
+		_, e := ParseOneEndpoint(in)
+		if e != nil {
+			log.Println(e)
+			os.Exit(1)
+		}
+	}
+
 	node := NewNode(nodeAddress, faultsDetectTime, pingExpireTime, pingNodesMaxNumber)
 	node.Receiver()
-	// todo join and leave
+	for _, in := range introducerAddr {
+		node.BroadcastJoin(in)
+	}
+
+	node.FaultsDetect()
 
 }
 

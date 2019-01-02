@@ -31,46 +31,48 @@ func (s *workerAddress) String() string {
 }
 
 var (
-	Help     bool
-	IsMaster bool
-	IsWorker bool
+	Help bool
 
-	MasterAddress string
-	WorkerAddress []string
-	Name          string
-	Filepath      string
+	NodeAddress        string
+	IntroducerAddr     []string
+	FaultsDetectTime   int
+	PingExpireTime     int
+	PingNodesMaxNumber int
+
+	// faultsDetectTime int,
+	// pingExpireTime int,
+	// pingNodesMaxNumber int,
+
 )
 
 func init() {
 	flag.BoolVar(&Help, "h", false, "this help")
-	flag.BoolVar(&IsMaster, "m", false, "to set up server for master")
-	flag.BoolVar(&IsWorker, "w", false, "to set up server for worker")
 
 	// 注意 `master address`。默认是 -ma string，有了 `master address` 之后，变为 -s master address
-	flag.StringVar(&MasterAddress, "ma", "", "set the `master_address` that we can communicate with")
-	flag.Var(newWorkerAddress([]string{}, &WorkerAddress), "wa", "set the `worker_address` that we can communicate with, spilt with space")
-	n, _ := os.Hostname()
-	flag.StringVar(&Name, "n", n, "set `name` for worker")
-	flag.StringVar(&Filepath, "f", "", "set the `file` position that the log is from")
+	flag.StringVar(&NodeAddress, "na", "", "set this `node address` that we can communicate with")
+	flag.Var(newWorkerAddress([]string{}, &IntroducerAddr), "ia", "set the `introducer address` that we can communicate with, spilt with space")
+	flag.IntVar(&FaultsDetectTime, "fdt", 15, "set `Faults Detecting Time` for node")
+	flag.IntVar(&PingExpireTime, "pet", 10, "set the `Ping Expired Time` for node")
+	flag.IntVar(&PingNodesMaxNumber, "n", 2, "set the number for giving one broadcast `file`")
 
 	// 改变默认的 Usage，flag包中的Usage 其实是一个函数类型。这里是覆盖默认函数实现，具体见后面Usage部分的分析
 	flag.Usage = usage
 }
 
 func usage() {
-	fmt.Fprintf(os.Stdout, `logger, the distributed logger system.
-Usage: logger [-?mrh] [-ma masterAddress] [-wa workerAddress] [-n name] [-f file]
+	fmt.Fprintf(os.Stdout, `node, the distributed group membership.
+Usage: node [-?h] [-na nodeAddress] [-ia introducerAddress] [-fdt faultsDetectTime] [-pet pingExpireTime] [-n pingNodesMaxNumber]
 
 Options:
 `)
 	flag.PrintDefaults()
 	fmt.Fprintf(os.Stdout, `
 Example:
-  1. to set up master
-	logger -m -ma localhost:9990 -wa "localhost:9991 localhost:9992 localhost:9993"
+  1. set up node with several single introducers
+	node -na localhost:9990 -ia "localhost:9991 localhost:9992 localhost:9993"
   2. to set up worker
-	logger -w -ma localhost:9990 -wa localhost:9991 -f ./machine.1.log -n machine.i
+	node -na localhost:9990 -ia "localhost:9991 localhost:9992 localhost:9993"
   3. to get help
-	logger -h
+	node -h
 `)
 }
