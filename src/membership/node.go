@@ -5,6 +5,7 @@ import (
 	"log"
 	"math/rand"
 	"net"
+	"os"
 	"sync"
 	"time"
 )
@@ -71,11 +72,10 @@ func (n *Node) updateNodeVersion(msg Message) {
 			n.BroadcastDelete(msg.TargetNode)
 		}
 	case Ping:
-		// todo
 		v, ok := n.maintenance[msg.TargetNode]
 		// 1. 不在列表里的可以加入
 		// 2. 在列表里 版本号小的进行更新
-		// todo
+		n.PingRespond(msg)
 		if !ok || (v < msg.Version && ok) {
 			n.maintenance[msg.TargetNode] = msg.Version
 		}
@@ -83,7 +83,7 @@ func (n *Node) updateNodeVersion(msg Message) {
 		v, ok := n.maintenance[msg.TargetNode]
 		// 1. 不在列表里的可以加入
 		// 2. 在列表里 版本号小的进行更新
-		// todo
+		n.PingBackRespond(msg)
 		if !ok || (v < msg.Version && ok) {
 			n.maintenance[msg.TargetNode] = msg.Version
 		}
@@ -92,7 +92,7 @@ func (n *Node) updateNodeVersion(msg Message) {
 	mutex.Unlock()
 }
 
-// PingRespond todo 接收到Ping的信息
+// PingRespond 接收到Ping的信息
 func (n *Node) PingRespond(msg Message) {
 	// A send Ping to current:
 	//		Ping.from = A, Ping.to = current, type = ping
@@ -156,17 +156,15 @@ func (n *Node) PingRespond(msg Message) {
 
 }
 
-// PingBackRespond todo 接受到PingBack的信息
+// PingBackRespond 接受到PingBack的信息
 func (n *Node) PingBackRespond(msg Message) {
 	// @https://prakhar.me/images/swim.png 依次
 	// B send PingBack to current:
 	// 		PingBack.from = B, PingBack.to = current, type = pingback
 	//		1. 不需要发任何报文
 	//		2. 相当于在Ping的这一步获得了ack
-	//			2.1 todo
 	// B PingOfPingReq_PingBack current
 	//		PingReq_PingBack.from = B, PingReq_PingBack.to != current, type = pingback
-	//
 	// B transfer_PingOfPingReq_PingBack current
 	// 		transfer.from != B, PingReq_PingBack.to == current, type = pingback
 	if msg.From == msg.RealFromAddr && msg.TargetNode == n.addr {
@@ -257,6 +255,7 @@ func (n *Node) FaultsDetect() {
 			if oneDetectHasFinised {
 				oneDetectHasFinised = false
 				log.Println("重制检测")
+				log.Println("list: []", n.maintenance)
 				oneDetectHasFinised = n.faultsDetect()
 				log.Println("执行完faultsDetect() oneDetectHasFinised: ", oneDetectHasFinised)
 			}
@@ -416,4 +415,52 @@ func (n *Node) Receiver() {
 			n.updateNodeVersion(*msg)
 		}
 	}()
+}
+
+// RunNode 定义了运行机制
+func RunNode(
+	nodeAddress string,
+	faultsDetectTime int,
+	pingExpireTime int,
+	pingNodesMaxNumber int) {
+	_, err := ParseOneEndpoint(nodeAddress)
+	if err != nil {
+		log.Println(err)
+		os.Exit(1)
+	}
+
+	node := NewNode(nodeAddress, faultsDetectTime, pingExpireTime, pingNodesMaxNumber)
+	node.Receiver()
+	// todo join and leave
+
+}
+
+// NewNode 工厂方法
+func NewNode(
+	nodeAddress string,
+	faultsDetectTime int,
+	pingExpireTime int,
+	pingNodesMaxNumber int) *Node {
+	node := new(Node)
+	node.addr = nodeAddress
+	node.T = faultsDetectTime
+	node.PingT = pingExpireTime
+	node.PingReqNodesNumber = pingNodesMaxNumber
+
+	udpAdd, _ := ParseOneEndpoint(node.addr)
+
+	listener, err := net.ListenUDP("udp", udpAdd)
+	if err != nil {
+		log.Fatalln(err)
+		return nil
+	}
+
+	node.FaultsDetectTimer = nil
+	node.PingTimer = nil
+	node.listener = listener
+	node.maintenance = make(map[nodeAddr]timestamp)
+	node.WaitingPing = make(chan Message, 1)
+	node.ACK = make(chan Message, 1)
+
+	return node
 }
