@@ -99,7 +99,7 @@ var (
 // }
 
 func TestFaultsDetect(t *testing.T) {
-	node.T = 60
+	node.T = 20
 	node.PingT = 10
 	node.WaitingPing = make(chan Message, 1)
 	node.ACK = make(chan Message, 1)

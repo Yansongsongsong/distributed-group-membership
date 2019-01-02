@@ -95,17 +95,16 @@ func (n *Node) faultsDetect() bool {
 	}
 
 	if len(n.maintenance) == 0 {
-		// todo 当本机没有维护的机器时 不ping
+		// 当本机没有维护的机器时 不ping
 		log.Println("当本机没有维护的机器时 不ping")
 		return true
 	}
 	tar := n.selectOneNode()
 	log.Println("selectOneNode: ", tar)
-	ack := make(chan Message, 1)
-	defer close(ack)
+
 	log.Println("Ping: ", tar)
 
-	go n.Ping(tar, ack)
+	go n.Ping(tar)
 
 	for {
 		select {
@@ -113,9 +112,10 @@ func (n *Node) faultsDetect() bool {
 			log.Println("FaultsDetectTimer过期")
 			n.BroadcastDelete(tar)
 			return true
-		case msg := <-ack:
+		case msg := <-n.ACK:
 			log.Println("收到ack")
 			n.FaultsDetectTimer.Stop()
+			n.PingTimer.Stop()
 			n.updateNodeVersion(msg)
 			return true
 		}
@@ -200,7 +200,7 @@ func (n *Node) selectServalNodes(except nodeAddr) []nodeAddr {
 
 // Ping 发送一个结构体
 // 包含了本机的addr 和 时间戳
-func (n *Node) Ping(to nodeAddr, ack chan Message) {
+func (n *Node) Ping(to nodeAddr) {
 	log.Println("Ping开始")
 	// 定时
 	if n.PingTimer != nil {
@@ -227,9 +227,6 @@ func (n *Node) Ping(to nodeAddr, ack chan Message) {
 			// 过期
 			n.PingReq(msg)
 			log.Println("PingReq msg 结束: ", msg)
-		case msg := <-n.ACK:
-			log.Println("msg := <-n.ACK， msg: ", msg)
-			ack <- msg
 			return
 		}
 	}
