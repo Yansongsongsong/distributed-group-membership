@@ -1,4 +1,4 @@
-// Package membership 基于SWIM，算法详解 @see https://zhuanlan.zhihu.com/p/39703992
+// Package membership，算法详解 @see https://zhuanlan.zhihu.com/p/39703992
 // # 算法，每个 Node 都有两个组件
 // 	- 故障检测 组件
 // 		1. 故障检测周期 T 内，每个 NodeA 从自己保持节点列表里随机选择 1 个节点(NodeB)发送 ping 指令
