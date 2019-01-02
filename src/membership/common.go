@@ -27,6 +27,8 @@ const (
 
 // Message 是udp 发送的报文段内容
 type Message struct {
+	// RealFromAddr 真实的发送者地址
+	RealFromAddr nodeAddr
 	// From 发送者地址
 	From nodeAddr
 	// 操作对象地址

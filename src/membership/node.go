@@ -52,6 +52,185 @@ func (n *Node) sendMessage(to string, msg Message) {
 	}
 }
 
+func (n *Node) updateNodeVersion(msg Message) {
+	mutex.Lock()
+	switch msg.Action {
+	case Join:
+		v, ok := n.maintenance[msg.TargetNode]
+		// 1. 不在列表里的可以加入
+		// 2. 在列表里 版本号小的进行更新
+		if !ok || (v < msg.Version && ok) {
+			n.maintenance[msg.TargetNode] = msg.Version
+			n.BroadcastJoin(msg.TargetNode, msg)
+		}
+	case Leave:
+		v, ok := n.maintenance[msg.TargetNode]
+		// 在列表里 且 版本号更大 才删除
+		if ok && v < msg.Version {
+			delete(n.maintenance, msg.TargetNode)
+			n.BroadcastDelete(msg.TargetNode)
+		}
+	case Ping:
+		// todo
+		v, ok := n.maintenance[msg.TargetNode]
+		// 1. 不在列表里的可以加入
+		// 2. 在列表里 版本号小的进行更新
+		// todo
+		if !ok || (v < msg.Version && ok) {
+			n.maintenance[msg.TargetNode] = msg.Version
+		}
+	case PingBack:
+		v, ok := n.maintenance[msg.TargetNode]
+		// 1. 不在列表里的可以加入
+		// 2. 在列表里 版本号小的进行更新
+		// todo
+		if !ok || (v < msg.Version && ok) {
+			n.maintenance[msg.TargetNode] = msg.Version
+		}
+	default:
+	}
+	mutex.Unlock()
+}
+
+// PingRespond todo 接收到Ping的信息
+func (n *Node) PingRespond(msg Message) {
+	// A send Ping to current:
+	//		Ping.from = A, Ping.to = current, type = ping
+	// A PingReq current:
+	//		PingReq.from = A, PingReq.to != current, type = ping
+	// A Ping_PingReq current:
+	//		Ping_PingReq.from != A, Ping_PingReq.to = current, type = ping
+
+	if msg.From == msg.RealFromAddr && msg.TargetNode == n.addr {
+		// A send Ping to current:
+		//		Ping.from = A, Ping.to = current, type = ping
+		// 当前节点接收到的是来自 msg.From 的 Ping
+		m := Message{
+			RealFromAddr: n.addr,
+			// From 发送者地址
+			From: n.addr,
+			// 操作对象地址
+			TargetNode: msg.From,
+			// Version 当前发送时间
+			Version: GetCurrentTime(),
+			// Action 消息类型
+			Action: PingBack,
+		}
+		n.sendMessage(msg.From, m)
+	}
+
+	if msg.From == msg.RealFromAddr && msg.TargetNode != n.addr {
+		// A PingReq current:
+		//		PingReq.from = A, PingReq.to != current, type = ping
+		// 当前节点接收到的是来自 msg.From 的 PingReq
+		m := Message{
+			RealFromAddr: n.addr,
+			// From 发送者地址
+			From: msg.From,
+			// 操作对象地址
+			TargetNode: msg.TargetNode,
+			// Version 当前发送时间
+			Version: GetCurrentTime(),
+			// Action 消息类型
+			Action: Ping,
+		}
+		n.sendMessage(msg.TargetNode, m)
+	}
+
+	if msg.From != msg.RealFromAddr && msg.TargetNode == n.addr {
+		// A Ping_PingReq current:
+		//		Ping_PingReq.from != A, Ping_PingReq.to = current, type = ping
+		m := Message{
+			RealFromAddr: n.addr,
+			// From 发送者地址
+			From: msg.TargetNode,
+			// 操作对象地址
+			TargetNode: msg.From,
+			// Version 当前发送时间
+			Version: GetCurrentTime(),
+			// Action 消息类型
+			Action: PingBack,
+		}
+		n.sendMessage(msg.TargetNode, m)
+	}
+
+}
+
+// PingBackRespond todo 接受到PingBack的信息
+func (n *Node) PingBackRespond(msg Message) {
+	// @https://prakhar.me/images/swim.png 依次
+	// B send PingBack to current:
+	// 		PingBack.from = B, PingBack.to = current, type = pingback
+	//		1. 不需要发任何报文
+	//		2. 相当于在Ping的这一步获得了ack
+	//			2.1 todo
+	// B PingOfPingReq_PingBack current
+	//		PingReq_PingBack.from = B, PingReq_PingBack.to != current, type = pingback
+	//
+	// B transfer_PingOfPingReq_PingBack current
+	// 		transfer.from != B, PingReq_PingBack.to == current, type = pingback
+	if msg.From == msg.RealFromAddr && msg.TargetNode == n.addr {
+		n.ACK <- msg
+	}
+
+	if msg.From == msg.RealFromAddr && msg.TargetNode != n.addr {
+		m := Message{
+			RealFromAddr: n.addr,
+			// From 发送者地址
+			From: msg.From,
+			// 操作对象地址
+			TargetNode: msg.TargetNode,
+			// Version 当前发送时间
+			Version: GetCurrentTime(),
+			// Action 消息类型
+			Action: PingBack,
+		}
+		n.sendMessage(msg.TargetNode, m)
+	}
+
+	if msg.From != msg.RealFromAddr && msg.TargetNode == n.addr {
+		n.ACK <- msg
+	}
+}
+
+func (n *Node) selectOneNode() nodeAddr {
+	list := []nodeAddr{}
+	mutex.Lock()
+	for k := range n.maintenance {
+		list = append(list, k)
+	}
+	mutex.Unlock()
+	rand.Seed(int64(time.Now().UnixNano()))
+	index := rand.Intn(len(list))
+
+	return list[index]
+}
+
+func (n *Node) selectServalNodes(except nodeAddr) []nodeAddr {
+	list := []nodeAddr{}
+	mutex.Lock()
+	for k := range n.maintenance {
+		if k == except {
+			continue
+		}
+		list = append(list, k)
+	}
+	mutex.Unlock()
+
+	if len(list) <= n.PingReqNodesNumber {
+		return list
+	}
+
+	rand.Seed(int64(time.Now().UnixNano()))
+	indexes := rand.Perm(len(list))[:n.PingReqNodesNumber]
+	res := []nodeAddr{}
+
+	for _, i := range indexes {
+		res = append(res, list[i])
+	}
+	return res
+}
+
 // FaultsDetect 故障检测
 // 	- 故障检测 组件
 // 		1. 故障检测周期 T 内，每个 NodeA 从自己保持节点列表里随机选择 1 个节点(NodeB)发送 ping 指令
@@ -124,139 +303,6 @@ func (n *Node) faultsDetect() bool {
 
 }
 
-func (n *Node) updateNodeVersion(msg Message) {
-	mutex.Lock()
-	switch msg.Action {
-	case Join:
-		v, ok := n.maintenance[msg.TargetNode]
-		// 1. 不在列表里的可以加入
-		// 2. 在列表里 版本号小的进行更新
-		if !ok || (v < msg.Version && ok) {
-			n.maintenance[msg.TargetNode] = msg.Version
-			n.BroadcastJoin(msg.TargetNode, msg)
-		}
-	case Leave:
-		v, ok := n.maintenance[msg.TargetNode]
-		// 在列表里 且 版本号更大 才删除
-		if ok && v < msg.Version {
-			delete(n.maintenance, msg.TargetNode)
-			n.BroadcastDelete(msg.TargetNode)
-		}
-	case Ping:
-		// todo
-		v, ok := n.maintenance[msg.TargetNode]
-		// 1. 不在列表里的可以加入
-		// 2. 在列表里 版本号小的进行更新
-		if !ok || (v < msg.Version && ok) {
-			n.maintenance[msg.TargetNode] = msg.Version
-		}
-	case PingBack:
-		v, ok := n.maintenance[msg.TargetNode]
-		// 1. 不在列表里的可以加入
-		// 2. 在列表里 版本号小的进行更新
-		if !ok || (v < msg.Version && ok) {
-			n.maintenance[msg.TargetNode] = msg.Version
-		}
-	default:
-	}
-	mutex.Unlock()
-}
-
-// PingRespond 接收到Ping的信息
-func (n *Node) PingRespond(msg Message, realAddr string) {
-	// A send Ping to current:
-	//		Ping.from = A, Ping.to = current, type = ping
-	// A PingReq current:
-	//		PingReq.from = A, PingReq.to != current, type = ping
-	// A Ping_PingReq current:
-	//		Ping_PingReq.from != A, Ping_PingReq.to = current, type = ping
-
-	if msg.TargetNode == n.addr {
-		// 当前节点接收到的是来自 msg.From 的 Ping
-		//		Msg.from = A, Msg.to = B, type = ping
-		m := Message{
-			// From 发送者地址
-			From: n.addr,
-			// 操作对象地址
-			TargetNode: msg.From,
-			// Version 当前发送时间
-			Version: GetCurrentTime(),
-			// Action 消息类型
-			Action: PingBack,
-		}
-		n.sendMessage(msg.From, m)
-	} else {
-		// 当前节点接收到的是来自 msg.From 的 PingReq
-		//		Msg.from = A, Msg.to != B, type = ping
-		m := Message{
-			// From 发送者地址
-			From: msg.From,
-			// 操作对象地址
-			TargetNode: msg.TargetNode,
-			// Version 当前发送时间
-			Version: GetCurrentTime(),
-			// Action 消息类型
-			Action: Ping,
-		}
-		n.sendMessage(msg.TargetNode, m)
-	}
-}
-
-// PingBackRespond 接受到PingBack的信息
-func (n *Node) PingBackRespond(msg Message) {
-	// B send PingBack to current:
-	// 		PingBack.from = B, PingBack.to = current, type = pingback
-	//		1. 不需要发任何报文
-	//		2. 相当于在Ping的这一步获得了ack
-	//			2.1 todo
-	// B PingReq_PingBack current
-	//		PingReq_PingBack.from = current, PingReq_PingBack.to = , type = pingback
-	//		1.
-	if msg.From == n.addr {
-
-	} else {
-
-	}
-}
-
-func (n *Node) selectOneNode() nodeAddr {
-	list := []nodeAddr{}
-	mutex.Lock()
-	for k := range n.maintenance {
-		list = append(list, k)
-	}
-	mutex.Unlock()
-	rand.Seed(int64(time.Now().UnixNano()))
-	index := rand.Intn(len(list))
-
-	return list[index]
-}
-
-func (n *Node) selectServalNodes(except nodeAddr) []nodeAddr {
-	list := []nodeAddr{}
-	mutex.Lock()
-	for k := range n.maintenance {
-		if k == except {
-			continue
-		}
-		list = append(list, k)
-	}
-	mutex.Unlock()
-
-	if len(list) <= n.PingReqNodesNumber {
-		return list
-	}
-
-	rand.Seed(int64(time.Now().UnixNano()))
-	indexes := rand.Perm(len(list))[:n.PingReqNodesNumber]
-	res := []nodeAddr{}
-
-	for _, i := range indexes {
-		res = append(res, list[i])
-	}
-	return res
-}
-
 // Ping 发送一个结构体
 // 包含了本机的addr 和 时间戳
 func (n *Node) Ping(to nodeAddr) {
@@ -271,10 +317,11 @@ func (n *Node) Ping(to nodeAddr) {
 	}
 
 	msg := Message{
-		From:       n.addr,
-		TargetNode: to,
-		Version:    GetCurrentTime(),
-		Action:     Ping,
+		RealFromAddr: n.addr,
+		From:         n.addr,
+		TargetNode:   to,
+		Version:      GetCurrentTime(),
+		Action:       Ping,
 	}
 	log.Println("发ping， msg: ", msg)
 	n.sendMessage(to, msg)
@@ -309,7 +356,13 @@ func (n *Node) BroadcastDelete(addr nodeAddr) {
 	delete(n.maintenance, addr)
 	log.Println("after BroadcastDelete: ", n.maintenance)
 	mutex.Unlock()
-	msg := Message{From: n.addr, TargetNode: addr, Version: GetCurrentTime(), Action: Leave}
+	msg := Message{
+		RealFromAddr: n.addr,
+		From:         n.addr,
+		TargetNode:   addr,
+		Version:      GetCurrentTime(),
+		Action:       Leave,
+	}
 	log.Println("BroadcastDelete: msg: ", msg)
 	n.Broadcast(msg)
 }
@@ -322,7 +375,13 @@ func (n *Node) BroadcastJoin(addr nodeAddr, m Message) {
 	n.maintenance[addr] = m.Version
 	log.Println("after BroadcastJoin: ", n.maintenance)
 	mutex.Unlock()
-	msg := Message{From: n.addr, TargetNode: addr, Version: m.Version, Action: Join}
+	msg := Message{
+		RealFromAddr: n.addr,
+		From:         n.addr,
+		TargetNode:   addr,
+		Version:      m.Version,
+		Action:       Join,
+	}
 	log.Println("BroadcastJoin: msg: ", msg)
 	n.Broadcast(msg)
 }

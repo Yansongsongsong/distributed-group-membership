@@ -33,7 +33,7 @@ func TestParseOneEndpoint(t *testing.T) {
 }
 
 func TestEncodeMessage(t *testing.T) {
-	msg := Message{"192.168.70.30:9981", "tar", 2019, Join}
+	msg := Message{"192.168.70.30:9981", "192.168.70.30:9981", "tar", 2019, Join}
 	bf := EncodeMessage(msg)
 
 	m := DecodeMessage(bf.Bytes())
