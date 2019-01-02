@@ -404,7 +404,7 @@ func (n *Node) Broadcast(msg Message) {
 // Receiver 根据时间戳
 // 判断是否执行 '移除 某节点' 或 '添加 某节点' 的操作
 func (n *Node) Receiver() {
-	go func() {
+	func() {
 		for {
 			data := make([]byte, 1024)
 			count, remoteAddr, err := n.listener.ReadFromUDP(data)
@@ -441,12 +441,14 @@ func RunNode(
 	}
 
 	node := NewNode(nodeAddress, faultsDetectTime, pingExpireTime, pingNodesMaxNumber)
-	node.Receiver()
+
 	for _, in := range introducerAddr {
 		node.BroadcastJoin(in)
 	}
 
 	node.FaultsDetect()
+
+	node.Receiver()
 
 }
 
