@@ -1,6 +1,7 @@
 package membership
 
 import (
+	"fmt"
 	"log"
 	"math/rand"
 	"net"
@@ -37,10 +38,10 @@ var (
 	mutex sync.Mutex
 )
 
-func (n *Node) sendMessage(addr string, msg Message) {
-	udpAddr, err := ParseOneEndpoint(addr)
+func (n *Node) sendMessage(to string, msg Message) {
+	udpAddr, err := ParseOneEndpoint(to)
 	if err != nil {
-		log.Printf("When send to '%s', error is: %s", addr, err)
+		log.Printf("When send to '%s', error is: %s", to, err)
 		return
 	}
 	data := EncodeMessage(msg)
@@ -132,12 +133,14 @@ func (n *Node) updateNodeVersion(msg Message) {
 		// 2. 在列表里 版本号小的进行更新
 		if !ok || (v < msg.Version && ok) {
 			n.maintenance[msg.TargetNode] = msg.Version
+			n.BroadcastJoin(msg.TargetNode, msg)
 		}
 	case Leave:
 		v, ok := n.maintenance[msg.TargetNode]
 		// 在列表里 且 版本号更大 才删除
 		if ok && v < msg.Version {
 			delete(n.maintenance, msg.TargetNode)
+			n.BroadcastDelete(msg.TargetNode)
 		}
 	case Ping:
 		// todo
@@ -155,9 +158,65 @@ func (n *Node) updateNodeVersion(msg Message) {
 			n.maintenance[msg.TargetNode] = msg.Version
 		}
 	default:
-
 	}
 	mutex.Unlock()
+}
+
+// PingRespond 接收到Ping的信息
+func (n *Node) PingRespond(msg Message, realAddr string) {
+	// A send Ping to current:
+	//		Ping.from = A, Ping.to = current, type = ping
+	// A PingReq current:
+	//		PingReq.from = A, PingReq.to != current, type = ping
+	// A Ping_PingReq current:
+	//		Ping_PingReq.from != A, Ping_PingReq.to = current, type = ping
+
+	if msg.TargetNode == n.addr {
+		// 当前节点接收到的是来自 msg.From 的 Ping
+		//		Msg.from = A, Msg.to = B, type = ping
+		m := Message{
+			// From 发送者地址
+			From: n.addr,
+			// 操作对象地址
+			TargetNode: msg.From,
+			// Version 当前发送时间
+			Version: GetCurrentTime(),
+			// Action 消息类型
+			Action: PingBack,
+		}
+		n.sendMessage(msg.From, m)
+	} else {
+		// 当前节点接收到的是来自 msg.From 的 PingReq
+		//		Msg.from = A, Msg.to != B, type = ping
+		m := Message{
+			// From 发送者地址
+			From: msg.From,
+			// 操作对象地址
+			TargetNode: msg.TargetNode,
+			// Version 当前发送时间
+			Version: GetCurrentTime(),
+			// Action 消息类型
+			Action: Ping,
+		}
+		n.sendMessage(msg.TargetNode, m)
+	}
+}
+
+// PingBackRespond 接受到PingBack的信息
+func (n *Node) PingBackRespond(msg Message) {
+	// B send PingBack to current:
+	// 		PingBack.from = B, PingBack.to = current, type = pingback
+	//		1. 不需要发任何报文
+	//		2. 相当于在Ping的这一步获得了ack
+	//			2.1 todo
+	// B PingReq_PingBack current
+	//		PingReq_PingBack.from = current, PingReq_PingBack.to = , type = pingback
+	//		1.
+	if msg.From == n.addr {
+
+	} else {
+
+	}
 }
 
 func (n *Node) selectOneNode() nodeAddr {
@@ -245,8 +304,26 @@ func (n *Node) PingReq(msg Message) {
 // BroadcastDelete 对 Node 维护列表内的所有节点
 // // 发送 '移除 某节点' 的 task
 func (n *Node) BroadcastDelete(addr nodeAddr) {
+	mutex.Lock()
+	log.Println("before BroadcastDelete: ", n.maintenance)
+	delete(n.maintenance, addr)
+	log.Println("after BroadcastDelete: ", n.maintenance)
+	mutex.Unlock()
 	msg := Message{From: n.addr, TargetNode: addr, Version: GetCurrentTime(), Action: Leave}
 	log.Println("BroadcastDelete: msg: ", msg)
+	n.Broadcast(msg)
+}
+
+// BroadcastJoin 对 Node 维护列表内的所有节点
+// // 发送 '移除 某节点' 的 task
+func (n *Node) BroadcastJoin(addr nodeAddr, m Message) {
+	mutex.Lock()
+	log.Println("before BroadcastJoin: ", n.maintenance)
+	n.maintenance[addr] = m.Version
+	log.Println("after BroadcastJoin: ", n.maintenance)
+	mutex.Unlock()
+	msg := Message{From: n.addr, TargetNode: addr, Version: m.Version, Action: Join}
+	log.Println("BroadcastJoin: msg: ", msg)
 	n.Broadcast(msg)
 }
 
@@ -265,13 +342,19 @@ func (n *Node) Broadcast(msg Message) {
 	}
 }
 
-// BroadcastReceiver 根据时间戳
+// Receiver 根据时间戳
 // 判断是否执行 '移除 某节点' 或 '添加 某节点' 的操作
-func (n *Node) BroadcastReceiver() {
-
-}
-
-// ResponseMessage 收到信息时进行反应
-func (n *Node) ResponseMessage() {
-
+func (n *Node) Receiver() {
+	go func() {
+		for {
+			data := make([]byte, 1024)
+			count, remoteAddr, err := n.listener.ReadFromUDP(data)
+			if err != nil {
+				fmt.Printf("error during read: %s", err)
+			}
+			msg := DecodeMessage(data[:count])
+			fmt.Printf("Receiver from <%s> %v\n", remoteAddr, *msg)
+			n.updateNodeVersion(*msg)
+		}
+	}()
 }
