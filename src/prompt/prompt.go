@@ -25,7 +25,7 @@ func init() {
 	flag.BoolVar(&Help, "h", false, "this help")
 
 	// 注意 `master address`。默认是 -ma string，有了 `master address` 之后，变为 -s master address
-	flag.StringVar(&ListenPort, "l", "", "set this node `listen` port. e.g. 2345")
+	flag.StringVar(&ListenPort, "l", "4567", "set this node `listen` port. e.g. 2345")
 	flag.StringVar(&GroupMember, "g", "", "set this `group member` e.g. 127.0.0.1:2345")
 	flag.IntVar(&Heart, "hb", 50, "set `heart beat interval`. Millisecond is considered")
 
