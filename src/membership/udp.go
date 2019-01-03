@@ -237,6 +237,10 @@ func (self *Daemon) CheckStandardInput() {
 		if input == "leave" {
 			self.Active = false
 		}
+		if input == "show" {
+			log.Println("Start server on port", fmt.Sprintf("%v", self.MemberList))
+			logger.Log("SHOW", fmt.Sprintf("%v", self.MemberList))
+		}
 	}
 
 }
